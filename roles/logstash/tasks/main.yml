@@ -1,2 +1,93 @@
 ---
-# tasks file for logstash
+- name: install dependencies packages
+  ansible.builtin.package:
+    name:
+      - apt-transport-https
+      - default-jre
+      - gpg
+  retries: 2
+  register: result
+  until: result is succeeded
+  tags: logstash
+
+- name: add repository key
+  ansible.builtin.apt_key:
+    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+  retries: 2
+  register: result
+  until: result is succeeded
+  tags: logstash
+
+- name: add repository
+  ansible.builtin.apt_repository:
+    repo: 'deb https://artifacts.elastic.co/packages/{{ logstash_major_version }}.x/apt stable main'
+  tags: logstash
+
+- name: install package
+  ansible.builtin.package:
+    name:
+      - logstash
+  retries: 2
+  register: result
+  until: result is succeeded
+  tags: logstash
+
+- name: copy general config file
+  ansible.builtin.copy:
+    content: '{{ logstash_full_config|to_yaml }}'
+    dest: /etc/logstash/logstash.yml
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart logstash
+  tags: logstash
+
+- name: create patterns directory
+  ansible.builtin.file:
+    path: /etc/logstash/patterns
+    owner: root
+    group: root
+    mode: 0755
+    state: directory
+  tags: logstash
+
+- name: copy patterns files
+  ansible.builtin.copy:
+    content: '{{ item.value }}'
+    dest: '/etc/logstash/patterns/{{ item.key }}.conf'
+    owner: root
+    group: root
+    mode: 0644
+  loop: '{{ logstash_patterns|dict2items }}'
+  loop_control:
+    label: '{{ item.key }}'
+  tags: logstash
+
+- name: copy input, output and filter files
+  ansible.builtin.template:
+    src: '{{ item }}.conf.j2'
+    dest: '/etc/logstash/conf.d/{{ item }}.conf'
+    owner: root
+    group: root
+    mode: 0644
+    validate: /usr/share/logstash/bin/logstash -t -f %s
+  loop:
+    - input
+    - output
+    - filter
+  notify: restart logstash
+  tags: logstash
+
+- name: install plugins
+  community.general.logstash_plugin:
+    name: '{{ item.name }}'
+    state: '{{ item.state|default("present") }}'
+  loop: '{{ logstash_plugins }}'
+  tags: logstash
+
+- name: enable and start service
+  ansible.builtin.service:
+    name: logstash
+    state: started
+    enabled: true
+  tags: logstash
