@@ -1,0 +1,10 @@
+[server1]
+192.168.56.135 ansible_user=dldperez
+
+[server3]
+192.168.56.139 ansible_user=dldperez
+
+
+
+
+
